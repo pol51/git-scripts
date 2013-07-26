@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# get the .git (makes current directory a repo clone)
+git clone --no-hardlinks --no-checkout $1 git_temp_repo
+mv git_temp_repo/.git .
+rm -rf git_temp_repo
+git reset
