@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+
+from git import Repo
+from argparse import ArgumentParser
+from dateutil import parser as DateParser
+import sys
+import os
+import logging
+import time
+import datetime
+import codecs
+
+
+class PatchExtractor:
+    def __init__(self, repo, output, since):
+        self._repo = repo
+        self._output = output
+        self._since = since
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+        logStream = logging.StreamHandler()
+        logStream.setFormatter(logging.Formatter('%(message)s'))
+        logger.addHandler(logStream)
+        self.logger = logger
+
+
+    def commits(self):
+        repo = Repo(self._repo)
+        ts = time.mktime(DateParser.parse(self._since).timetuple())
+        for commit in repo.iter_commits('master'):
+            if commit.committed_date < ts:
+                break
+            yield commit
+
+    def extractPatches(self):
+        for commit in self.commits():
+            commit_date = datetime.datetime.fromtimestamp(float(commit.committed_date))
+            path = '%s/%s' % (self._output, commit.committer.email)
+            file = '%s/%s_%s.patch' % (path,
+                                       commit_date.strftime('%Y-%m-%d_%H-%M-%S'),
+                                       commit.hexsha)
+
+            self.logger.debug(('%.7s (%s) %s <%s> -> %s' %
+                              (commit.hexsha,
+                               commit_date.strftime('%Y-%m-%d %H:%M:%S'),
+                               commit.message.split('\n')[0].strip(),
+                               commit.committer,
+                               file)).encode('utf-8'))
+
+            if not os.access(path, os.W_OK):
+                os.makedirs(path)
+
+            file = codecs.open(file, 'w', buffering=4096, encoding='utf-8')
+            file.write('From: %s %s\n' % (commit.hexsha, commit_date.ctime()))
+            file.write('From: %s <%s>\n' % (commit.committer.name, commit.committer.email))
+            file.write('Date: %s\n' % commit_date.strftime('%a, %d %b %Y %X'))
+            file.write('Subject: %s\n' % commit.message.split('\n')[0].strip())
+            file.write('---\n')
+            for diff in commit.diff(commit.parents[0], create_patch=True):
+                try:
+                    file.write(diff.diff.decode('utf-8'))
+                except UnicodeDecodeError:
+                    pass
+            file.close()
+
+
+
+def main(args):
+    parser = ArgumentParser()
+    parser.add_argument('path', default='.', nargs="?",
+                        help='Show only commits that are enough to explain how the files that match the specified '
+                             'paths came to be. See "History Simplification" below for details and other '
+                             'simplification modes.')
+    parser.add_argument('--output', default='patches', help='Output directory for the generated patches.')
+    parser.add_argument('--since', default='1-1-1', help='Extract patches from commits more recent than a specific date.')
+    options = parser.parse_args(args)
+
+    patchExtractor = PatchExtractor(options.path, options.output, options.since)
+    patchExtractor.extractPatches()
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
