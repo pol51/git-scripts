@@ -1,0 +1,12 @@
+#!/bin/bash
+
+NAME=$1
+MAIL=$2
+
+git filter-branch -f --commit-filter '
+  GIT_COMMITTER_NAME="$NAME";
+  GIT_AUTHOR_NAME="$NAME";
+  GIT_COMMITTER_EMAIL="$MAIL";
+  GIT_AUTHOR_EMAIL="$MAIL";
+  git commit-tree "$@";
+'
