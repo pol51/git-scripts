@@ -12,10 +12,11 @@ import codecs
 
 
 class PatchExtractor:
-    def __init__(self, repo, output, since):
+    def __init__(self, repo, output, since, authors_list):
         self._repo = repo
         self._output = output
         self._since = since
+        self._authors_list = authors_list
 
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
@@ -24,14 +25,17 @@ class PatchExtractor:
         logger.addHandler(logStream)
         self.logger = logger
 
-
     def commits(self):
         repo = Repo(self._repo)
         ts = time.mktime(DateParser.parse(self._since).timetuple())
         for commit in repo.iter_commits('master'):
-            if commit.committed_date < ts:
-                break
-            yield commit
+            try:
+                if not self._authors_list or commit.committer.email in self._authors_list:
+                    if commit.committed_date < ts:
+                        break
+                    yield commit
+            except Exception:
+                pass
 
     def extractPatches(self):
         for commit in self.commits():
@@ -51,7 +55,7 @@ class PatchExtractor:
             if not os.access(path, os.W_OK):
                 os.makedirs(path)
 
-            file = codecs.open(file, 'w', buffering=4096, encoding='utf-8')
+            file = codecs.open(file, 'w', encoding='utf-8')
             file.write('From: %s %s\n' % (commit.hexsha, commit_date.ctime()))
             file.write('From: %s <%s>\n' % (commit.committer.name, commit.committer.email))
             file.write('Date: %s\n' % commit_date.strftime('%a, %d %b %Y %X'))
@@ -74,9 +78,19 @@ def main(args):
                              'simplification modes.')
     parser.add_argument('--output', default='patches', help='Output directory for the generated patches.')
     parser.add_argument('--since', default='1-1-1', help='Extract patches from commits more recent than a specific date.')
+    parser.add_argument('--authors_list', help='Only extracts patches from authors in the list.')
     options = parser.parse_args(args)
 
-    patchExtractor = PatchExtractor(options.path, options.output, options.since)
+    authors_list = None
+    if options.authors_list:
+        try:
+            file = codecs.open(options.authors_list, 'r', encoding='utf-8')
+            authors_list = [author.strip() for author in file.readlines()]
+            file.close()
+        except Exception:
+            pass
+
+    patchExtractor = PatchExtractor(options.path, options.output, options.since, authors_list)
     patchExtractor.extractPatches()
 
 
