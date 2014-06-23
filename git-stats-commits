@@ -1,0 +1,61 @@
+#!/bin/bash
+set -e
+
+while getopts "gA:p" opt; do
+	case $opt in
+    p)
+      file_pattern="$OPTARG"
+      ;;
+    g)
+      draw_graph=1
+      ;;
+  esac
+done
+
+
+function main {
+  if [ -n "$draw_graph" ]; then
+    for rev in `revisions`; do
+      echo "`number_of_lines`"
+    done |
+    plot_graph
+  else
+    for rev in `revisions`; do
+      echo "`number_of_lines` `commit_description`"
+    done
+  fi
+}
+
+function revisions {
+  git rev-list --reverse HEAD
+}
+
+function commit_description {
+  git log --oneline -1 $rev
+}
+
+function number_of_lines {
+  git ls-tree -r $rev |
+  grep "$file_pattern" |
+  awk '{print $3}' |
+  xargs git show |
+  wc -l
+}
+
+function plot_graph {
+  TMP_DATA="/tmp/git_stats.dat"
+  rm $TMP_DATA 2> /dev/null
+  awk '{print $1}' "$1" > $TMP_DATA
+  
+  TMP_SCRIPT="/tmp/git_stats_plot.tmp"
+  rm $TMP_SCRIPT 2> /dev/null
+  echo 'set title "Lines of Code Over Project History"' >> $TMP_SCRIPT
+  echo 'set xlabel "commits"' >> $TMP_SCRIPT
+  echo 'set ylabel "lines of code"' >> $TMP_SCRIPT
+  echo "plot \"$TMP_DATA\" " >> $TMP_SCRIPT
+  echo "" >> $TMP_SCRIPT
+  
+  gnuplot -persist $TMP_SCRIPT
+}
+
+main

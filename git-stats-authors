@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+function main {
+  for author in `authors`; do
+    echo "$author: `commits_count $author` commits / `changes $author`"
+  done |
+  sort -rn -k2
+}
+
+function authors {
+  git log --format='%ae' |
+  sort -u
+}
+
+function commits_count {
+  git log --author=$1 --oneline |
+  wc -l
+}
+
+function changes {
+  git log --author=$1 --pretty=tformat: --numstat |
+  awk '{ adds += $1; subs += $2 } END { printf "%s ++ / %s --\n", adds, subs }'
+}
+
+main
